@@ -163,7 +163,7 @@ impl Engine {
         let mut scored = Vec::new();
         // 不同切分共享很多前缀（`zh g d o…` 的各种切法前几段一样），同一次查询里同一个模式只查一遍
         let mut memo: HashMap<String, Vec<Match<'_>>> = HashMap::new();
-        for segmentation in &segmentations {
+        for (rank, segmentation) in segmentations.iter().enumerate() {
             let mut patterns = segmentation.patterns();
             let count = patterns.len();
             let last = &segmentation.syllables[count - 1];
@@ -194,7 +194,11 @@ impl Engine {
             // 输入的前缀也出候选（`kaifazhe` → 开发、开），否则长句没法逐词上屏。
             // 只收音节数正好等于前缀长度的词，更长的词会与输入后面的音节冲突。
             // 前缀不含最后一个位置，因此可复用上面的扩展结果。
-            for prefix_len in (1..count).rev() {
+            // 次优切分要像一种正经读法才出前缀词（见 `reads_cleanly`）：`yuanchao` 的 `yuan ch… ao` 这种切法的前缀
+            // 吃掉的字母更多，按覆盖排会把 原创 / 王世 排到 远 / 往 这些单字前面，选了还剩一段对不上的字母
+            let prefixes = rank == 0 || reads_cleanly(segmentation, &segmentations[0]);
+            let prefix_lens = if prefixes { 1..count } else { 1..1 };
+            for prefix_len in prefix_lens.rev() {
                 let prefix = &patterns[..prefix_len];
                 let prefix_letters: usize = prefix.iter().map(|p| p.text.len()).sum();
                 let hits = memo
@@ -646,6 +650,18 @@ impl Engine {
         }
         hits
     }
+}
+
+/// 次优切分算不算一种正经读法（只有正经读法才出前缀词）：不完整音节不比最优切分多（`yuan ch… ao`、`chao xian g` 不算），
+/// 也不在中间切出 a / o / e 开头的音节（`yu an chao`、`jia bi an gou`，标准拼音这里要写隔音符，敲了 `'` 的已是最优切分）。
+/// `minganci` 的 `min gan ci` 两条都满足，前缀词 敏感 照出。
+fn reads_cleanly(segmentation: &Segmentation, best: &Segmentation) -> bool {
+    segmentation.incomplete_count() <= best.incomplete_count()
+        && !segmentation
+            .syllables
+            .iter()
+            .skip(1)
+            .any(|s| s.text.starts_with(['a', 'o', 'e']))
 }
 
 /// 排在开头的英文候选有几条（整段是英文词、不像拼音带出的英文补全）：整句插在它们后面。
