@@ -157,9 +157,10 @@ fn prefix_words_appear_after_full_matches() {
     // 开放 / 开饭 来自 `kai f… a zhe` 这种把 `fa` 拆开的切分，`kai fa zhe` 读得通时排到最后，单字 开 在它们前面
     let all = texts("kaifazhe");
     assert_eq!(&all[..2], ["开发者", "开发"]);
-    let mut last = all[all.len() - 2..].to_vec();
-    last.sort();
-    assert_eq!(last, ["开放", "开饭"]);
+    // local patch: prefix words suppressed (shijunVV fork)
+    for word in ["开放", "开饭"] {
+        assert!(!all.contains(&word.to_owned()), "{all:?}");
+    }
     assert!(all.contains(&"开".to_owned()));
 }
 
@@ -197,9 +198,11 @@ fn single_chars_come_before_guessed_words_and_split_readings() {
     for guess in ["时尚", "世上", "史上"] {
         assert!(position(&all, guess) < position(&all, "是"), "{all:?}");
     }
-    for later in ["事上", "时尚潮流", "事实", "是啥呢"] {
+    for later in ["事上", "时尚潮流", "是啥呢"] {
         assert!(position(&all, "时") < position(&all, later), "{all:?}");
     }
+    // local patch: prefix words suppressed (shijunVV fork)
+    assert!(!all.contains(&"事实".to_owned()), "{all:?}");
 }
 
 #[test]
@@ -740,9 +743,9 @@ fn split_readings_far_from_the_typed_pinyin_come_after_every_single_char() {
     }
     let all = texts_in(&dictionary, "nihao");
     assert_eq!(all[0], "你好");
-    assert!(position(&all, "你喝") < position(&all, "霓"), "{all:?}");
-    for far in ["你会", "霓虹"] {
-        assert!(position(&all, "昵") < position(&all, far), "{all:?}");
+    // local patch: prefix words suppressed (shijunVV fork)
+    for far in ["你喝", "你会", "霓虹"] {
+        assert!(!all.contains(&far.to_owned()), "{all:?}");
     }
 }
 
