@@ -292,7 +292,10 @@ impl Engine {
             // 前缀不含最后一个位置，因此可复用上面的扩展结果。
             // 混输只从主切分产前缀：别的读法的短前缀（`banben` 的 ba）会把学习记录套到整段输入上，
             // 只读开头一个音节的词就这样越过盖住整段的词（#374）
-            if !mixed_readings || index == 0 {
+            // 次优切分要像一种正经读法才出前缀词（见 `reads_cleanly`）：`yuanchao` 的 `yuan ch… ao` 这种切法的前缀
+            // 吃掉的字母更多，按覆盖排会把 原创 / 王世 排到 远 / 往 这些单字前面，选了还剩一段对不上的字母
+            let prefixes = index == 0 || reads_cleanly(segmentation, &segmentations[0]);
+            if (!mixed_readings || index == 0) && prefixes {
                 for prefix_len in (1..count).rev() {
                     let prefix = &patterns[..prefix_len];
                     let prefix_letters: usize = prefix.iter().map(|p| p.text.len()).sum();
@@ -585,4 +588,16 @@ impl Engine {
             },
         })
     }
+}
+
+/// 次优切分算不算一种正经读法（只有正经读法才出前缀词）：不完整音节不比最优切分多（`yuan ch… ao`、`chao xian g` 不算），
+/// 也不在中间切出 a / o / e 开头的音节（`yu an chao`、`jia bi an gou`，标准拼音这里要写隔音符，敲了 `'` 的已是最优切分）。
+/// `minganci` 的 `min gan ci` 两条都满足，前缀词 敏感 照出。
+fn reads_cleanly(segmentation: &Segmentation, best: &Segmentation) -> bool {
+    segmentation.incomplete_count() <= best.incomplete_count()
+        && !segmentation
+            .syllables
+            .iter()
+            .skip(1)
+            .any(|s| s.text.starts_with(['a', 'o', 'e']))
 }

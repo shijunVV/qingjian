@@ -9,6 +9,48 @@ fn exact_word_first_then_longer_then_prefix_expansions_then_prefix_words() {
 }
 
 #[test]
+fn prefix_words_come_only_from_the_best_segmentation() {
+    // `yuanchao` 另有 `yuan ch… ao`、`yuan c… hao`、`yu an chao` 这些切法：按它们的前缀出的 原创 / 院长 / 预案
+    // 吃掉的字母比 远 多，以前会把单字挤到好几页后面；选了也只剩个对不上的 `ao`
+    let dictionary = Dictionary::parse(
+        "元朝\tyuan chao\t5000\n原创\tyuan chuang\t90000\n院长\tyuan zhang\t80000\n\
+         原唱\tyuan chang\t8000\n预案\tyu an\t7000\n远\tyuan\t30000\n原\tyuan\t40000\n超\tchao\t20000\n",
+    )
+    .unwrap();
+    let mut engine = Engine::new(dictionary);
+    engine.set_input("yuanchao");
+    let texts: Vec<String> = engine
+        .query()
+        .unwrap()
+        .candidates
+        .items
+        .into_iter()
+        .map(|c| c.text)
+        .collect();
+    assert_eq!(texts[0], "元朝");
+    for word in ["原创", "院长", "原唱", "预案"] {
+        assert!(
+            !texts.contains(&word.to_owned()),
+            "{word} 不该出现：{texts:?}"
+        );
+    }
+    assert!(texts.contains(&"原".to_owned()) && texts.contains(&"远".to_owned()));
+}
+
+#[test]
+fn clean_alternative_segmentations_still_give_prefix_words() {
+    // `minganci` 最优切分是 `ming an ci`，`min gan ci` 也是一种干净的读法：它的前缀词 敏感 照出
+    let dictionary = Dictionary::parse(
+        "敏感\tmin gan\t9000\n命案\tming an\t3000\n名\tming\t50000\n词\tci\t20000\n",
+    )
+    .unwrap();
+    let mut engine = Engine::new(dictionary);
+    engine.set_input("minganci");
+    let query = engine.query().unwrap();
+    assert!(query.candidates.items.iter().any(|c| c.text == "敏感"));
+}
+
+#[test]
 fn partial_last_syllable_expands() {
     assert_eq!(texts("kaif"), ["开放", "开发", "开饭", "开发者", "开"]);
 }
