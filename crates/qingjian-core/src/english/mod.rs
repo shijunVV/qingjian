@@ -12,6 +12,8 @@ pub const MIN_CORRECTION_LETTERS: usize = 4;
 
 /// 按敲的字母给英文候选：精确词（按词表里的大小写）第一，然后是前缀补全、再是差一处编辑的词，
 /// 后两组各自按用户选过的次数、词频排序。大小写跟着敲的走：`Compa` 出 Company，`COMPA` 出 COMPANY。
+/// 敲的全小写而精确词首字母大写（词表里的 OR、单字母 S、May，个人表学过的 A）时，敲的原样排第一、词表写法跟在后面：
+/// 空格选的是第一个，大写该由 Shift 决定；iPhone 这类首字母小写的写法仍按词表。
 ///
 /// `lists` 是若干词表，前面的优先（用户自己打过的词在前、随包词表在后）：精确词取第一个有的，补全与纠正合在一起排。
 pub fn suggest(
@@ -26,7 +28,12 @@ pub fn suggest(
     }
     let mut result: Vec<String> = Vec::with_capacity(limit);
     if let Some(word) = lists.iter().find_map(|words| words.get(&code)) {
-        result.push(adapt_case(word, typed));
+        let word = adapt_case(word, typed);
+        if typed == code && word.starts_with(|c: char| c.is_ascii_uppercase()) {
+            result.push(code.clone());
+        }
+        result.push(word);
+        result.truncate(limit);
     }
     let ranked = |mut hits: Vec<(&str, u32)>, result: &mut Vec<String>| {
         hits.sort_by(|a, b| {
@@ -130,6 +137,26 @@ mod tests {
         assert_eq!(suggest(&[&list], "COMP", |_| 0, 1), ["COMPANY"]);
         assert_eq!(suggest(&[&list], "Iphone", |_| 0, 1), ["IPhone"]);
         assert_eq!(adapt_case("hello", "H"), "Hello");
+    }
+
+    #[test]
+    fn lowercase_typing_puts_the_typed_letters_before_capitalized_forms() {
+        // 随包词表把 or 写成 OR、单字母写成大写，个人表里学过 A：敲小写时敲的原样第一，词表写法紧跟其后
+        let list = WordList::parse(
+            "OR\tor\t6540\norder\torder\t5000\nS\ts\t5860\nMay\tmay\t5980\nmaybe\tmaybe\t5000\n",
+        )
+        .unwrap();
+        assert_eq!(suggest(&[&list], "or", |_| 0, 9), ["or", "OR", "order"]);
+        assert_eq!(suggest(&[&list], "s", |_| 0, 9), ["s", "S"]);
+        assert_eq!(suggest(&[&list], "may", |_| 0, 9), ["may", "May", "maybe"]);
+        assert_eq!(suggest(&[&list], "or", |_| 0, 1), ["or"]);
+        let user = WordList::parse("A\ta\t76\n").unwrap();
+        let main = WordList::parse("a\ta\t7360\nand\tand\t7000\n").unwrap();
+        assert_eq!(suggest(&[&user, &main], "a", |_| 0, 9), ["a", "A", "and"]);
+        // 按着 Shift 敲的照旧跟着敲的大小写；首字母小写的写法（iPhone）仍按词表
+        assert_eq!(suggest(&[&list], "OR", |_| 0, 1), ["OR"]);
+        assert_eq!(suggest(&[&list], "May", |_| 0, 1), ["May"]);
+        assert_eq!(suggest(&[&words()], "iphone", |_| 0, 9), ["iPhone"]);
     }
 
     #[test]
